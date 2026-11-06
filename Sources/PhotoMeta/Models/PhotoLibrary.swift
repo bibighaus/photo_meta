@@ -85,6 +85,27 @@ final class PhotoLibrary: ObservableObject {
         previewPhoto = nil
     }
 
+    enum Transform {
+        case rotateClockwise
+        case rotateCounterclockwise
+        case mirrorAcrossHorizontalAxis
+    }
+
+    func applyTransform(_ transform: Transform, to photo: Photo) async {
+        do {
+            switch transform {
+            case .rotateClockwise:
+                try PhotoMetadataService.rotate(photo.url, direction: .clockwise)
+            case .rotateCounterclockwise:
+                try PhotoMetadataService.rotate(photo.url, direction: .counterclockwise)
+            case .mirrorAcrossHorizontalAxis:
+                try PhotoMetadataService.mirrorAcrossHorizontalAxis(photo.url)
+            }
+        } catch {
+            errorMessage = "Could not rotate or mirror \(photo.filename): \(error.localizedDescription)"
+        }
+    }
+
     func apply(date: Date, coordinate: Coordinate?, to targets: [Photo]) async {
         var failures: [String] = []
         for photo in targets {
