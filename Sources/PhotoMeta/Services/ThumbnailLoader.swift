@@ -9,7 +9,15 @@ actor ThumbnailLoader {
     private let cache = NSCache<NSString, NSImage>()
 
     func thumbnail(for url: URL, maxPixelSize: CGFloat) -> NSImage? {
-        let key = "\(url.path)|\(Int(maxPixelSize))" as NSString
+        // Include the file's modification time in the cache key so that
+        // rotating, mirroring or otherwise rewriting a photo on disk
+        // invalidates any thumbnail cached for it automatically.
+        var modified: TimeInterval = 0
+        if let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+           let modificationDate = attributes[.modificationDate] as? Date {
+            modified = modificationDate.timeIntervalSinceReferenceDate
+        }
+        let key = "\(url.path)|\(Int(maxPixelSize))|\(modified)" as NSString
         if let cached = cache.object(forKey: key) {
             return cached
         }

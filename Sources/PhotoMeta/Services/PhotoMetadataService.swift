@@ -97,44 +97,116 @@ enum PhotoMetadataService {
     }
 
     static func write(date: Date, coordinate: Coordinate?, to url: URL) throws {
+        try rewrite(url) { properties in
+            let dateString = exifDateFormatter.string(from: date)
+
+            var exif = (properties[kCGImagePropertyExifDictionary as String] as? [String: Any]) ?? [:]
+            exif[kCGImagePropertyExifDateTimeOriginal as String] = dateString
+            exif[kCGImagePropertyExifDateTimeDigitized as String] = dateString
+            properties[kCGImagePropertyExifDictionary as String] = exif
+
+            var tiff = (properties[kCGImagePropertyTIFFDictionary as String] as? [String: Any]) ?? [:]
+            tiff[kCGImagePropertyTIFFDateTime as String] = dateString
+            properties[kCGImagePropertyTIFFDictionary as String] = tiff
+
+            if let coordinate {
+                var gps = (properties[kCGImagePropertyGPSDictionary as String] as? [String: Any]) ?? [:]
+                gps[kCGImagePropertyGPSLatitude as String] = abs(coordinate.latitude)
+                gps[kCGImagePropertyGPSLatitudeRef as String] = coordinate.latitude >= 0 ? "N" : "S"
+                gps[kCGImagePropertyGPSLongitude as String] = abs(coordinate.longitude)
+                gps[kCGImagePropertyGPSLongitudeRef as String] = coordinate.longitude >= 0 ? "E" : "W"
+                gps[kCGImagePropertyGPSDateStamp as String] = utcDateStampFormatter.string(from: date)
+                gps[kCGImagePropertyGPSTimeStamp as String] = utcTimeStampFormatter.string(from: date)
+                properties[kCGImagePropertyGPSDictionary as String] = gps
+            }
+
+            var iptc = (properties[kCGImagePropertyIPTCDictionary as String] as? [String: Any]) ?? [:]
+            var keywords = (iptc[kCGImagePropertyIPTCKeywords as String] as? [String]) ?? []
+            if !keywords.contains(processedMarker) {
+                keywords.append(processedMarker)
+            }
+            iptc[kCGImagePropertyIPTCKeywords as String] = keywords
+            properties[kCGImagePropertyIPTCDictionary as String] = iptc
+        }
+    }
+
+    enum RotationDirection {
+        case clockwise
+        case counterclockwise
+    }
+
+    /// Rotates the photo a quarter turn by updating its EXIF orientation tag,
+    /// so this stays lossless — the encoded pixel data is never touched.
+    static func rotate(_ url: URL, direction: RotationDirection) throws {
+        let delta = direction == .clockwise ? 90 : -90
+        try transformOrientation(url) { mirrored, rotation in
+            (mirrored, rotation + delta)
+        }
+    }
+
+    /// Flips the photo top-to-bottom (reflects it across a horizontal line
+    /// through its center) by updating its EXIF orientation tag.
+    static func mirrorAcrossHorizontalAxis(_ url: URL) throws {
+        try transformOrientation(url) { mirrored, rotation in
+            (!mirrored, rotation + 180)
+        }
+    }
+
+    /// EXIF orientation 1-8 decomposed into "mirror horizontally, then rotate
+    /// clockwise by this many degrees" so quarter turns and flips can be
+    /// composed with simple arithmetic instead of an 8x8 transition table.
+    private static func decomposeOrientation(_ orientation: Int) -> (mirrored: Bool, rotation: Int) {
+        switch orientation {
+        case 1: return (false, 0)
+        case 2: return (true, 0)
+        case 3: return (false, 180)
+        case 4: return (true, 180)
+        case 5: return (true, 270)
+        case 6: return (false, 90)
+        case 7: return (true, 90)
+        case 8: return (false, 270)
+        default: return (false, 0)
+        }
+    }
+
+    private static func composeOrientation(mirrored: Bool, rotation: Int) -> Int {
+        let normalized = ((rotation % 360) + 360) % 360
+        switch (mirrored, normalized) {
+        case (false, 0): return 1
+        case (true, 0): return 2
+        case (false, 180): return 3
+        case (true, 180): return 4
+        case (true, 270): return 5
+        case (false, 90): return 6
+        case (true, 90): return 7
+        case (false, 270): return 8
+        default: return 1
+        }
+    }
+
+    private static func transformOrientation(_ url: URL, _ transform: (Bool, Int) -> (Bool, Int)) throws {
+        try rewrite(url) { properties in
+            let currentOrientation = (properties[kCGImagePropertyOrientation as String] as? Int) ?? 1
+            let (mirrored, rotation) = decomposeOrientation(currentOrientation)
+            let (newMirrored, newRotation) = transform(mirrored, rotation)
+            properties[kCGImagePropertyOrientation as String] = composeOrientation(mirrored: newMirrored, rotation: newRotation)
+        }
+    }
+
+    /// Reads a JPEG's properties, lets `mutate` change them, then writes the
+    /// image back out with the original encoded pixel data copied through
+    /// unchanged. Writes to a temp sibling file first and swaps it in
+    /// atomically, so a failed or interrupted write never corrupts the
+    /// original scan.
+    private static func rewrite(_ url: URL, mutate: (inout [String: Any]) -> Void) throws {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
             throw PhotoMetadataError.cannotOpenSource
         }
         let type = CGImageSourceGetType(source) ?? (UTType.jpeg.identifier as CFString)
 
         var properties = (CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any]) ?? [:]
-        let dateString = exifDateFormatter.string(from: date)
+        mutate(&properties)
 
-        var exif = (properties[kCGImagePropertyExifDictionary as String] as? [String: Any]) ?? [:]
-        exif[kCGImagePropertyExifDateTimeOriginal as String] = dateString
-        exif[kCGImagePropertyExifDateTimeDigitized as String] = dateString
-        properties[kCGImagePropertyExifDictionary as String] = exif
-
-        var tiff = (properties[kCGImagePropertyTIFFDictionary as String] as? [String: Any]) ?? [:]
-        tiff[kCGImagePropertyTIFFDateTime as String] = dateString
-        properties[kCGImagePropertyTIFFDictionary as String] = tiff
-
-        if let coordinate {
-            var gps = (properties[kCGImagePropertyGPSDictionary as String] as? [String: Any]) ?? [:]
-            gps[kCGImagePropertyGPSLatitude as String] = abs(coordinate.latitude)
-            gps[kCGImagePropertyGPSLatitudeRef as String] = coordinate.latitude >= 0 ? "N" : "S"
-            gps[kCGImagePropertyGPSLongitude as String] = abs(coordinate.longitude)
-            gps[kCGImagePropertyGPSLongitudeRef as String] = coordinate.longitude >= 0 ? "E" : "W"
-            gps[kCGImagePropertyGPSDateStamp as String] = utcDateStampFormatter.string(from: date)
-            gps[kCGImagePropertyGPSTimeStamp as String] = utcTimeStampFormatter.string(from: date)
-            properties[kCGImagePropertyGPSDictionary as String] = gps
-        }
-
-        var iptc = (properties[kCGImagePropertyIPTCDictionary as String] as? [String: Any]) ?? [:]
-        var keywords = (iptc[kCGImagePropertyIPTCKeywords as String] as? [String]) ?? []
-        if !keywords.contains(processedMarker) {
-            keywords.append(processedMarker)
-        }
-        iptc[kCGImagePropertyIPTCKeywords as String] = keywords
-        properties[kCGImagePropertyIPTCDictionary as String] = iptc
-
-        // Write to a temp sibling file first, then atomically swap it in, so a
-        // failed or interrupted write never corrupts the original scan.
         let tempURL = url.deletingLastPathComponent()
             .appendingPathComponent(".\(UUID().uuidString)_\(url.lastPathComponent)")
 

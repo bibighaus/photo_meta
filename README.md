@@ -8,8 +8,12 @@ location before adding them to your collection.
 1. **Choose Folder…** — pick a folder of scanned JPEGs.
 2. The grid shows every photo in that folder **that this app hasn't tagged
    yet**. A slider scales the thumbnail size.
-3. Click a thumbnail to see it larger. Choose **Add to Batch** to stage it
-   for tagging, or **Skip** to go back and pick a different photo.
+3. Click a thumbnail to see it larger. If a scan came in sideways or
+   upside down, use **Rotate Left**, **Rotate Right**, or **Mirror
+   Top/Bottom** to fix its orientation before deciding — these edit the
+   photo's EXIF orientation tag, so they're instant and lossless. Then
+   choose **Add to Batch** to stage it for tagging, or **Skip** to go back
+   and pick a different photo.
 4. Staged photos appear in a tray along the bottom. Click **Add Date &
    Location…** to open the editor:
    - Set a date/time with the date picker.
