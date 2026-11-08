@@ -17,7 +17,7 @@ struct CopyMetadataPickerView: View {
                 .padding(.top)
             ScrollView {
                 LazyVGrid(columns: columns, spacing: 12) {
-                    ForEach(library.processedPhotos) { photo in
+                    ForEach(library.taggedPhotos) { photo in
                         VStack(spacing: 4) {
                             CopySourceThumbnail(photo: photo)
                             if let date = photo.captureDate {
@@ -25,6 +25,16 @@ struct CopyMetadataPickerView: View {
                                     .font(.caption2)
                                     .lineLimit(1)
                             }
+                            HStack(spacing: 4) {
+                                if photo.hasDateSet {
+                                    Image(systemName: "calendar")
+                                }
+                                if photo.hasLocationSet {
+                                    Image(systemName: "mappin.and.ellipse")
+                                }
+                            }
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                         }
                         .contentShape(Rectangle())
                         .onTapGesture {
