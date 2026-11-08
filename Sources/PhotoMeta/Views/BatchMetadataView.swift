@@ -42,29 +42,38 @@ struct BatchMetadataView: View {
                 .opacity(setDate ? 1 : 0.5)
 
             Toggle("Set Location", isOn: $setLocation)
-            GroupBox("Location") {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        TextField("Search address or place", text: $addressText)
-                            .onSubmit { geocode() }
-                        Button("Find") { geocode() }
-                            .disabled(addressText.isEmpty || isGeocoding || !setLocation)
-                    }
-                    HStack {
-                        TextField("Latitude", text: $latitudeText)
-                        TextField("Longitude", text: $longitudeText)
-                    }
-                    .frame(maxWidth: 260)
-                    if isGeocoding {
-                        ProgressView().controlSize(.small)
-                    }
-                    if let geocodeError {
-                        Text(geocodeError).foregroundStyle(.red).font(.caption)
-                    }
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Location")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                HStack {
+                    TextField("Search address or place", text: $addressText)
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(!setLocation)
+                        .onSubmit { geocode() }
+                    Button("Find") { geocode() }
+                        .disabled(addressText.isEmpty || isGeocoding || !setLocation)
                 }
-                .padding(.top, 4)
+                HStack {
+                    TextField("Latitude", text: $latitudeText)
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(!setLocation)
+                    TextField("Longitude", text: $longitudeText)
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(!setLocation)
+                }
+                .frame(maxWidth: 280)
+                if isGeocoding {
+                    ProgressView().controlSize(.small)
+                }
+                if let geocodeError {
+                    Text(geocodeError).foregroundStyle(.red).font(.caption)
+                }
             }
-            .disabled(!setLocation)
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.08)))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.gray.opacity(0.25)))
             .opacity(setLocation ? 1 : 0.5)
 
             Button("Copy Date/Location From Existing Photo…") {
@@ -105,12 +114,16 @@ struct BatchMetadataView: View {
         isGeocoding = true
         geocodeError = nil
         CLGeocoder().geocodeAddressString(addressText) { placemarks, error in
-            isGeocoding = false
-            if let coordinate = placemarks?.first?.location?.coordinate {
-                latitudeText = String(coordinate.latitude)
-                longitudeText = String(coordinate.longitude)
-            } else {
-                geocodeError = error?.localizedDescription ?? "Location not found."
+            // The completion handler isn't guaranteed to land on the main
+            // thread, and these all drive SwiftUI state.
+            DispatchQueue.main.async {
+                isGeocoding = false
+                if let coordinate = placemarks?.first?.location?.coordinate {
+                    latitudeText = String(coordinate.latitude)
+                    longitudeText = String(coordinate.longitude)
+                } else {
+                    geocodeError = error?.localizedDescription ?? "Location not found."
+                }
             }
         }
     }
