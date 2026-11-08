@@ -38,9 +38,9 @@ struct PhotoDetailView: View {
                     Label("Rotate Right", systemImage: "rotate.right")
                 }
                 Button {
-                    rotate(.mirrorAcrossHorizontalAxis)
+                    rotate(.mirrorLeftRight)
                 } label: {
-                    Label("Mirror Top/Bottom", systemImage: "arrow.up.and.down.righttriangle.up.righttriangle.down")
+                    Label("Mirror Left/Right", systemImage: "arrow.left.and.right.righttriangle.left.righttriangle.right")
                 }
             }
             .disabled(isTransforming)

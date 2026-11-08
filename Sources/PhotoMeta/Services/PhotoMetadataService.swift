@@ -21,13 +21,17 @@ enum PhotoMetadataError: Error, LocalizedError {
 /// unchanged (CGImageDestinationAddImageFromSource) so this never re-compresses
 /// or degrades the scanned image; only the metadata dictionary changes.
 enum PhotoMetadataService {
-    /// Written into IPTC Keywords once a photo has gone through this app's
-    /// workflow, so future folder scans know to skip it even if the photo
-    /// already had some unrelated EXIF date/GPS from the scanner.
-    static let processedMarker = "photometa:processed"
+    /// Written into IPTC Keywords once this app has set a photo's date or
+    /// location, tracked independently so a photo that only has a date set
+    /// can still be found later to add a location (and vice versa) — even
+    /// if the photo already had some unrelated EXIF date/GPS from the
+    /// scanner that this app itself never wrote.
+    static let dateSetMarker = "photometa:date-set"
+    static let locationSetMarker = "photometa:location-set"
 
     struct ReadResult {
-        var isProcessed: Bool
+        var hasDateSet: Bool
+        var hasLocationSet: Bool
         var captureDate: Date?
         var coordinate: Coordinate?
     }
@@ -59,7 +63,7 @@ enum PhotoMetadataService {
     static func read(from url: URL) -> ReadResult {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any] else {
-            return ReadResult(isProcessed: false, captureDate: nil, coordinate: nil)
+            return ReadResult(hasDateSet: false, hasLocationSet: false, captureDate: nil, coordinate: nil)
         }
         return parse(props)
     }
@@ -87,27 +91,44 @@ enum PhotoMetadataService {
             coordinate = Coordinate(latitude: signedLat, longitude: signedLon)
         }
 
-        var isProcessed = false
+        var hasDateSet = false
+        var hasLocationSet = false
         if let iptc = props[kCGImagePropertyIPTCDictionary as String] as? [String: Any],
            let keywords = iptc[kCGImagePropertyIPTCKeywords as String] as? [String] {
-            isProcessed = keywords.contains(processedMarker)
+            hasDateSet = keywords.contains(dateSetMarker)
+            hasLocationSet = keywords.contains(locationSetMarker)
         }
 
-        return ReadResult(isProcessed: isProcessed, captureDate: date, coordinate: coordinate)
+        return ReadResult(hasDateSet: hasDateSet, hasLocationSet: hasLocationSet, captureDate: date, coordinate: coordinate)
     }
 
-    static func write(date: Date, coordinate: Coordinate?, to url: URL) throws {
+    /// Writes whichever of `date` / `coordinate` is non-nil, leaving the other
+    /// untouched — so a batch can add just a location to photos that already
+    /// have a date (or vice versa) without disturbing the field it didn't ask
+    /// to change.
+    static func write(date: Date?, coordinate: Coordinate?, to url: URL) throws {
+        guard date != nil || coordinate != nil else { return }
+
         try rewrite(url) { properties in
-            let dateString = exifDateFormatter.string(from: date)
+            var iptc = (properties[kCGImagePropertyIPTCDictionary as String] as? [String: Any]) ?? [:]
+            var keywords = (iptc[kCGImagePropertyIPTCKeywords as String] as? [String]) ?? []
 
-            var exif = (properties[kCGImagePropertyExifDictionary as String] as? [String: Any]) ?? [:]
-            exif[kCGImagePropertyExifDateTimeOriginal as String] = dateString
-            exif[kCGImagePropertyExifDateTimeDigitized as String] = dateString
-            properties[kCGImagePropertyExifDictionary as String] = exif
+            if let date {
+                let dateString = exifDateFormatter.string(from: date)
 
-            var tiff = (properties[kCGImagePropertyTIFFDictionary as String] as? [String: Any]) ?? [:]
-            tiff[kCGImagePropertyTIFFDateTime as String] = dateString
-            properties[kCGImagePropertyTIFFDictionary as String] = tiff
+                var exif = (properties[kCGImagePropertyExifDictionary as String] as? [String: Any]) ?? [:]
+                exif[kCGImagePropertyExifDateTimeOriginal as String] = dateString
+                exif[kCGImagePropertyExifDateTimeDigitized as String] = dateString
+                properties[kCGImagePropertyExifDictionary as String] = exif
+
+                var tiff = (properties[kCGImagePropertyTIFFDictionary as String] as? [String: Any]) ?? [:]
+                tiff[kCGImagePropertyTIFFDateTime as String] = dateString
+                properties[kCGImagePropertyTIFFDictionary as String] = tiff
+
+                if !keywords.contains(dateSetMarker) {
+                    keywords.append(dateSetMarker)
+                }
+            }
 
             if let coordinate {
                 var gps = (properties[kCGImagePropertyGPSDictionary as String] as? [String: Any]) ?? [:]
@@ -115,16 +136,17 @@ enum PhotoMetadataService {
                 gps[kCGImagePropertyGPSLatitudeRef as String] = coordinate.latitude >= 0 ? "N" : "S"
                 gps[kCGImagePropertyGPSLongitude as String] = abs(coordinate.longitude)
                 gps[kCGImagePropertyGPSLongitudeRef as String] = coordinate.longitude >= 0 ? "E" : "W"
-                gps[kCGImagePropertyGPSDateStamp as String] = utcDateStampFormatter.string(from: date)
-                gps[kCGImagePropertyGPSTimeStamp as String] = utcTimeStampFormatter.string(from: date)
+                if let date {
+                    gps[kCGImagePropertyGPSDateStamp as String] = utcDateStampFormatter.string(from: date)
+                    gps[kCGImagePropertyGPSTimeStamp as String] = utcTimeStampFormatter.string(from: date)
+                }
                 properties[kCGImagePropertyGPSDictionary as String] = gps
+
+                if !keywords.contains(locationSetMarker) {
+                    keywords.append(locationSetMarker)
+                }
             }
 
-            var iptc = (properties[kCGImagePropertyIPTCDictionary as String] as? [String: Any]) ?? [:]
-            var keywords = (iptc[kCGImagePropertyIPTCKeywords as String] as? [String]) ?? []
-            if !keywords.contains(processedMarker) {
-                keywords.append(processedMarker)
-            }
             iptc[kCGImagePropertyIPTCKeywords as String] = keywords
             properties[kCGImagePropertyIPTCDictionary as String] = iptc
         }
@@ -144,11 +166,11 @@ enum PhotoMetadataService {
         }
     }
 
-    /// Flips the photo top-to-bottom (reflects it across a horizontal line
+    /// Flips the photo left-to-right (reflects it across a vertical line
     /// through its center) by updating its EXIF orientation tag.
-    static func mirrorAcrossHorizontalAxis(_ url: URL) throws {
+    static func mirrorLeftRight(_ url: URL) throws {
         try transformOrientation(url) { mirrored, rotation in
-            (!mirrored, rotation + 180)
+            (!mirrored, rotation)
         }
     }
 

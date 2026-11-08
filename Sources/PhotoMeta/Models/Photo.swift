@@ -2,7 +2,8 @@ import Foundation
 
 struct Photo: Identifiable, Hashable {
     let url: URL
-    var isProcessed: Bool
+    var hasDateSet: Bool
+    var hasLocationSet: Bool
     var captureDate: Date?
     var coordinate: Coordinate?
 

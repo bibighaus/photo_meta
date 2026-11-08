@@ -6,7 +6,9 @@ struct BatchMetadataView: View {
     @EnvironmentObject private var library: PhotoLibrary
     @Environment(\.dismiss) private var dismiss
 
+    @State private var setDate = true
     @State private var date = Date()
+    @State private var setLocation = true
     @State private var addressText = ""
     @State private var latitudeText = ""
     @State private var longitudeText = ""
@@ -20,21 +22,33 @@ struct BatchMetadataView: View {
         return Coordinate(latitude: lat, longitude: lon)
     }
 
+    /// Nothing to do if neither field is turned on, or location is turned on
+    /// but hasn't resolved to an actual coordinate yet.
+    private var canApply: Bool {
+        guard setDate || setLocation else { return false }
+        if setLocation && coordinate == nil { return false }
+        return true
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Add Date & Location to \(library.selectedBatch.count) Photo\(library.selectedBatch.count == 1 ? "" : "s")")
+            Text("Update \(library.selectedBatch.count) Photo\(library.selectedBatch.count == 1 ? "" : "s")")
                 .font(.headline)
 
+            Toggle("Set Date", isOn: $setDate)
             DatePicker("Date & Time", selection: $date, displayedComponents: [.date, .hourAndMinute])
                 .datePickerStyle(.field)
+                .disabled(!setDate)
+                .opacity(setDate ? 1 : 0.5)
 
+            Toggle("Set Location", isOn: $setLocation)
             GroupBox("Location") {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         TextField("Search address or place", text: $addressText)
                             .onSubmit { geocode() }
                         Button("Find") { geocode() }
-                            .disabled(addressText.isEmpty || isGeocoding)
+                            .disabled(addressText.isEmpty || isGeocoding || !setLocation)
                     }
                     HStack {
                         TextField("Latitude", text: $latitudeText)
@@ -50,11 +64,13 @@ struct BatchMetadataView: View {
                 }
                 .padding(.top, 4)
             }
+            .disabled(!setLocation)
+            .opacity(setLocation ? 1 : 0.5)
 
             Button("Copy Date/Location From Existing Photo…") {
                 showCopyPicker = true
             }
-            .disabled(library.processedPhotos.isEmpty)
+            .disabled(library.taggedPhotos.isEmpty)
 
             Spacer()
 
@@ -65,19 +81,21 @@ struct BatchMetadataView: View {
                     apply()
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(isApplying || library.selectedBatch.isEmpty)
+                .disabled(isApplying || library.selectedBatch.isEmpty || !canApply)
             }
         }
         .padding()
-        .frame(width: 480, height: 480)
+        .frame(width: 480, height: 560)
         .sheet(isPresented: $showCopyPicker) {
             CopyMetadataPickerView { source in
                 if let sourceDate = source.captureDate {
                     date = sourceDate
+                    setDate = true
                 }
                 if let coord = source.coordinate {
                     latitudeText = String(coord.latitude)
                     longitudeText = String(coord.longitude)
+                    setLocation = true
                 }
             }
         }
@@ -100,8 +118,8 @@ struct BatchMetadataView: View {
     private func apply() {
         isApplying = true
         let targets = library.selectedBatch
-        let finalDate = date
-        let finalCoordinate = coordinate
+        let finalDate = setDate ? date : nil
+        let finalCoordinate = setLocation ? coordinate : nil
         Task {
             await library.apply(date: finalDate, coordinate: finalCoordinate, to: targets)
             isApplying = false

@@ -6,28 +6,41 @@ location before adding them to your collection.
 ## Workflow
 
 1. **Choose Folder…** — pick a folder of scanned JPEGs.
-2. The grid shows every photo in that folder **that this app hasn't tagged
-   yet**. A slider scales the thumbnail size.
+2. Four tabs sort every photo in that folder by what it's missing:
+   - **No Meta Data** — nothing set yet.
+   - **Date Updated** — has a date, still needs a location.
+   - **Location Updated** — has a location, still needs a date.
+   - **Date and Location Updated** — fully tagged.
+
+   A slider scales the thumbnail size. Picking a photo from any tab works
+   the same way — so if you tagged a batch with just a date, you can come
+   back to the **Date Updated** tab later and add locations to exactly
+   those photos.
 3. Click a thumbnail to see it larger. If a scan came in sideways or
    upside down, use **Rotate Left**, **Rotate Right**, or **Mirror
-   Top/Bottom** to fix its orientation before deciding — these edit the
+   Left/Right** to fix its orientation before deciding — these edit the
    photo's EXIF orientation tag, so they're instant and lossless. Then
    choose **Add to Batch** to stage it for tagging, or **Skip** to go back
    and pick a different photo.
 4. Staged photos appear in a tray along the bottom. Click **Add Date &
    Location…** to open the editor:
+   - **Set Date** and **Set Location** are independent toggles — turn
+     either one off to leave that field untouched on the staged photos
+     (e.g. add a location to a batch that already has dates, without
+     resetting those dates).
    - Set a date/time with the date picker.
    - Enter a location by typing an address/place and clicking **Find**
      (geocoded via Apple's location services), or type latitude/longitude
      directly.
    - Or click **Copy Date/Location From Existing Photo…** to pick one of
      the photos you've already tagged and reuse its date and/or location.
-   - **Apply** writes the date/GPS location into each staged photo's EXIF/GPS
-     metadata and marks it as processed, so it drops out of the "to do" grid.
-5. Re-opening the same folder later (or adding new scans to it) only shows
-   photos that still need tagging — already-tagged photos are recognized by
-   a marker written into their IPTC keywords, so this works even if a scan
-   already had some unrelated timestamp baked in by the scanner software.
+   - **Apply** writes whichever field is turned on into each staged photo's
+     EXIF/GPS metadata, which moves it into the matching tab.
+5. Re-opening the same folder later (or adding new scans to it) sorts
+   photos into the same four tabs — a date and a location set by this app
+   are each recognized by their own marker written into the photo's IPTC
+   keywords, so this works even if a scan already had some unrelated
+   timestamp baked in by the scanner software.
 
 ## Requirements
 
